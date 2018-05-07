@@ -223,6 +223,7 @@ class VariationalHMMBase(object):
         self.forward_msgs()
         self.backward_msgs()
 
+        # Tweak for endpoints
         self.var_x = self.lalpha + self.lbeta
         self.var_x -= np.max(self.var_x, axis=1)[:,npa]
         self.var_x = np.exp(self.var_x)
@@ -289,6 +290,7 @@ class VariationalHMMBase(object):
 
         lalpha = self.lalpha
 
+        # Change here to put a delta func on X_0
         lalpha[0,:] = self.mod_init + ll[0,:]
 
         for t in xrange(1,self.T):
@@ -312,6 +314,11 @@ class VariationalHMMBase(object):
         ltran = self.mod_tran
         ll = self.lliks
 
+        # Change here
+        # delta = -np.inf*self.lbeta[0,:]
+        # delta[x^*] = 0.
+        # np.logaddexp.reduce(ltran + delta, axis=1, out=lbeta[self.T-2,:])
+        # Loop from T-3 backwards
         lbeta = self.lbeta
         lbeta[self.T-1,:] = 0.
 
@@ -347,7 +354,7 @@ class VariationalHMMBase(object):
         """ This function returns the hamming distance between the full
             variational distribution on the states, and the true state
             sequence, after matching via the munkres algorithm
-            
+
             full_var_x: variational distribution of state sequence.  Generate
                         it with self.full_local_update().
 
@@ -365,19 +372,19 @@ class VariationalHMMBase(object):
         """ This functions computes the KL divergence between the variational
             Gaussian distribution and given true Gaussian distribution (input).
             It also returns the total l2 distance between the means
-        
+
             emit_true : iterable of true emission distributions
 
             permutation : best matching permutation (see above)
 
             Returns
-            
+
               - KL : The KL-divergence between the estimated and true emission
                      distributions
               - distance_mus : L_2 distance between true and estimated emission
                                means
         """
-        
+
         KL = 0                  #running sum of total KL divergence
         distance_mus = 0        #running sum of just l2 distance between means
         dim = len(self.var_emit[1].mu)
@@ -386,7 +393,7 @@ class VariationalHMMBase(object):
             diffmeans = emit_true[k].mu - self.var_emit[k2].mu
             distance_mus += npl.norm(diffmeans)     #l2 distance
             sig_emit_inv = npl.inv(emit_true[k].sigma)
-            KL += .5* (np.trace( np.dot( sig_emit_inv, self.var_emit[k2].sigma ) ) + np.dot( diffmeans, np.dot(sig_emit_inv, diffmeans) ) - dim - np.log( npl.det(self.var_emit[k2].sigma) / npl.det(emit_true[k].sigma) ) )  
+            KL += .5* (np.trace( np.dot( sig_emit_inv, self.var_emit[k2].sigma ) ) + np.dot( diffmeans, np.dot(sig_emit_inv, diffmeans) ) - dim - np.log( npl.det(self.var_emit[k2].sigma) / npl.det(emit_true[k].sigma) ) )
         return KL, distance_mus
 
     def A_dist(self, A_true, perm):
@@ -398,7 +405,7 @@ class VariationalHMMBase(object):
 
             perm : best matching permutation of estimated states (see
                          hamming_dist)
-            
+
         """
         A = self.var_tran / np.sum(self.var_tran, axis=1)[:,np.newaxis]
         #permute the matrix to match
