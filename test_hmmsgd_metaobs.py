@@ -36,19 +36,19 @@ def test_hmmsgd_metaobs():
     N = 1000
     obs = np.array([emit[int(np.round(i/N))].rvs()[0]
                     for i in xrange(N)])
-    
+
     mu_0 = np.zeros(D)
     sigma_0 = 0.75*np.cov(obs.T)
     kappa_0 = 0.01
     nu_0 = 4
 
-    prior_emit = [Gaussian(mu_0=mu_0, sigma_0=sigma_0, kappa_0=kappa_0, 
+    prior_emit = [Gaussian(mu_0=mu_0, sigma_0=sigma_0, kappa_0=kappa_0,
                            nu_0=nu_0) for _ in xrange(K)]
     prior_emit = np.array(prior_emit)
     prior_tran = np.ones(K*K).reshape((K,K))
     prior_init = np.ones(K)
 
-    hmm = HMM.VBHMM(obs, prior_init, prior_tran, prior_emit)
+    hmm = HMM.VBHMM(obs, prior_init, prior_tran, prior_emit, verbose=True, maxit=100, metaobs_half=5)
     hmm.infer()
     full_var_x = hmm.full_local_update()
 

@@ -48,7 +48,7 @@ def test_hmmbatchcd():
     prior_tran = np.ones(K*K).reshape((K,K))
     prior_init = np.ones(K)
 
-    hmm = HMM.VBHMM(obs, prior_init, prior_tran, prior_emit)
+    hmm = HMM.VBHMM(obs, prior_init, prior_tran, prior_emit, verbose=True, epsilon=1e-16)
     hmm.infer()
 
     sts_true = np.array([int(np.round(i/N)) for i in xrange(N)])
