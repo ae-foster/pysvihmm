@@ -148,7 +148,7 @@ class VBHMM(VariationalHMMBase):
 
         np.random.seed(seed)
         self.seed = seed
-        
+
         super(VBHMM, self).__init__(obs, prior_init, prior_tran,
                                     prior_emit, mask=mask, init_init=init_init,
                                     init_tran=init_tran, verbose=verbose,
@@ -228,8 +228,8 @@ class VBHMM(VariationalHMMBase):
 
     def metaobs_noverlap(self, N, L, n):
         """ Sample n non-overlapping meta-observations of length 2L as
-            minibatch. 
-            
+            minibatch.
+
             The function assumes that it's possible draw non-overlapping
             meta-observations.  So n should be pretty small relative to N.
         """
@@ -237,7 +237,7 @@ class VBHMM(VariationalHMMBase):
         # Region of points that we can select a meta-observation of size L.
         ll = L
         uu = N - 1 - L
-        
+
         c_vec = np.inf * np.ones(n)
         minibatch = list()
         # First meta-observation is uniform random
@@ -254,9 +254,25 @@ class VBHMM(VariationalHMMBase):
 
         return minibatch
 
+    def metaobs_recurrence(self, N, L, n):
+        """ Sample minibatches using recurrence to a state.
+        """
+
+        # Pick centers of meta-observation at random.
+        c_vec = npr.randint(L, N, n)
+        minibatch = list()
+
+        # Construct meta-observations as named tuples.
+        for c in c_vec:
+            # Todo simulate out to recurrence of a (sampled?) state
+
+            minibatch.append(MetaObs(c-L,c+L))
+
+        return minibatch
+
     def local_lower_bound(self):
         """ Contribution of meta-observation to approximate lower bound
-            
+
             approx. lower bound = local + global
         """
         # Data term and entropy of states
@@ -352,7 +368,7 @@ class VBHMM(VariationalHMMBase):
 
             #need to specify how often we call select L, and a max L
             if L is None or (adaptive and it % perIter == 0):
-                L = self.select_L(mb_sz, epsilon=epsilon, minHalfL=minHalfL, 
+                L = self.select_L(mb_sz, epsilon=epsilon, minHalfL=minHalfL,
                     avgResidual=avgResidual, Lincrement=Lincrement, Lcutoff= Lcutoff)
 
                 #re-initialize to proper size:
@@ -372,9 +388,9 @@ class VBHMM(VariationalHMMBase):
                     the buffer_budget functions resizes mb_sz to be used for minibatches
                     in the steps between
                 """
-                bufferL = self.select_buffer(self.mb_sz, epsilon=epsilon, halfL=L, 
+                bufferL = self.select_buffer(self.mb_sz, epsilon=epsilon, halfL=L,
                     avgResidual=avgResidual, Lincrement=Lincrement, Lcutoff=Lcutoff)
-                
+
                 #print "bufferL: %d" % bufferL
                 #re-initialize to proper size:
                 #bufferL = 20
@@ -403,6 +419,8 @@ class VBHMM(VariationalHMMBase):
                           for k in xrange(K)]
 
             for data in minibatch:
+                if self.verbose:
+                    print 'Current batch indices', data.i1, data.i2
 
                 self.cur_mo = data
 
@@ -417,7 +435,7 @@ class VBHMM(VariationalHMMBase):
                 # Take abs b/c not guarenteed to get positive components.
                 self.var_init = np.abs(ev[:,ew_dec[0]])
 
-                # Local update for this meta-observation, whole buffer gets 
+                # Local update for this meta-observation, whole buffer gets
                 # updated here if growBuffer= True
                 self.local_update(metaobs=data)
 
@@ -426,7 +444,7 @@ class VBHMM(VariationalHMMBase):
                     A_i, e_i = self.intermediate_pars_buffer(data, bufferL, L)
                 else:
                     A_i, e_i = self.intermediate_pars(data)
-                
+
                 A_inter += A_i
 
                 for k in xrange(K):
@@ -524,13 +542,13 @@ class VBHMM(VariationalHMMBase):
         #don't sample from endpoints
         indices = npr.choice(self.T-2*minHalfL-1, size=numIndices) + minHalfL
         maxL = -1
-        
+
         if not avgResidual:
             for ind in indices:
                 q_diff = np.finfo(np.float_).max
                 L = minHalfL
-                q_old = self.get_marginal( self.get_local_messages(ind,minHalfL) , minHalfL ) 
-            
+                q_old = self.get_marginal( self.get_local_messages(ind,minHalfL) , minHalfL )
+
                 while True: #we can't let it grow past endpoints
                     if ind-L < 1+Lincrement or ind+L+Lincrement+1 > self.T or L > Lcutoff:
                         break
@@ -542,8 +560,8 @@ class VBHMM(VariationalHMMBase):
                     q_old = q_new
 
                 maxL = np.maximum(maxL, L)
-        
-        else: 
+
+        else:
             for ind in indices:
                 L = minHalfL
                 q_old = self.get_marginal( self.get_local_messages(ind,minHalfL), minHalfL)
@@ -569,7 +587,7 @@ class VBHMM(VariationalHMMBase):
         return maxL
 
     def buffer_budget(self, halfL, budget = 400):
-        """This divides a computational budget of total observations 
+        """This divides a computational budget of total observations
             by halflength to set number of metaobservations
             to be used per minibatch between trials of growBuffer
             Returns an integer that is to be used at minibatch size
@@ -578,7 +596,7 @@ class VBHMM(VariationalHMMBase):
 
     def select_buffer(self, numIndices=1, epsilon=1e-5, halfL=10,
                       avgResidual=False, Lincrement=1, Lcutoff=1000):
-        """ 
+        """
             Select width of buffered metaobservation such that the local
             messages inside the original endpoints are \epsilon approximations
             to the true messages.
@@ -594,7 +612,7 @@ class VBHMM(VariationalHMMBase):
         #don't sample from endpoints
         indices = npr.choice(self.T-2*halfL-1, size=numIndices) + halfL
         maxL = -1
-        
+
         if not avgResidual:
             for ind in indices:
                 q_diff_left = np.finfo(np.float_).max
@@ -613,7 +631,7 @@ class VBHMM(VariationalHMMBase):
                     var_new = self.get_local_messages(ind,bufferL)
                     q_new_left = self.get_marginal( var_new , bufferL - halfL)
                     q_new_right = self.get_marginal( var_new , bufferL + halfL)
-                    
+
                     q_diff_left = np.sum(np.abs(q_new_left - q_old_left))
                     q_diff_right = np.sum(np.abs(q_new_right - q_old_right))
 
@@ -621,8 +639,8 @@ class VBHMM(VariationalHMMBase):
                     q_old_right = q_new_right
 
                 maxL = np.maximum(maxL, bufferL)
-        
-        else: 
+
+        else:
             for ind in indices:
                 bufferL = halfL
 
@@ -695,14 +713,14 @@ class VBHMM(VariationalHMMBase):
         var_x = np.exp(var_x)
         var_x /= np.sum(var_x, axis=1)[:,npa]
 
-        #returns a vector of probabilities of length K, over the index 
+        #returns a vector of probabilities of length K, over the index
         #return np.squeeze(var_x[halflength,:])
         return var_x
 
     def get_marginal(self, var_over_x, index, ):
-        """ returns a vector of probabilities of length K, over 
+        """ returns a vector of probabilities of length K, over
             the index, to be used on
-            the value returned by get_local_messages (a variational 
+            the value returned by get_local_messages (a variational
             distribution over a whole metaobs)
         """
         return np.squeeze( var_over_x[index,:] )
@@ -898,7 +916,7 @@ class VBHMM(VariationalHMMBase):
                 #        util.NIW_meanfield(G, obs[loff:(uoff+1),:][inds,:], weights)
                 #emit_inter.append(util.NIW_mf_natural_pars(mu_mf, sigma_mf,
                 #                                           kappa_mf, nu_mf))
-                
+
                 # These are natural params already, so no need to convert
                 sstats = util.NIW_suffstats(G, obs[loff:(uoff+1),:][inds,:], weights)
                 emit_inter.append(sstats)
@@ -945,7 +963,7 @@ class VBHMM(VariationalHMMBase):
         else:
             loff, uoff = metaobs.i1+bufferL-L, metaobs.i2-bufferL+L
 
-        var_x = self.var_x[bufferL-L:bufferL+L+1, :] 
+        var_x = self.var_x[bufferL-L:bufferL+L+1, :]
 
         obs = self.obs
         mask = self.mask
@@ -978,7 +996,7 @@ class VBHMM(VariationalHMMBase):
                 #        util.NIW_meanfield(G, obs[loff:(uoff+1),:][inds,:], weights)
                 #emit_inter.append(util.NIW_mf_natural_pars(mu_mf, sigma_mf,
                 #                                           kappa_mf, nu_mf))
-                
+
                 # These are natural params already, so no need to convert
                 sstats = util.NIW_suffstats(G, obs[loff:(uoff+1),:][inds,:], weights)
                 emit_inter.append(sstats)
@@ -1090,7 +1108,7 @@ class VBHMM(VariationalHMMBase):
             BEWARE: If metaobs is not the same as self.cur_mo then a local step
                     is run on metaobs and the internal local state of the object
                     (alpha_table, beta_table, var_x, etc.) will change.
-            
+
             metaobs: Optional MetaObs namedtuple indicating which
                      meta-observation to copute for.  If not specified the
                      current meta-observation is used.
