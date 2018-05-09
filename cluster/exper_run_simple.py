@@ -19,7 +19,7 @@ except IOError:
     from util import mvnrand
 
 # Small just for debugging
-maxit = 5
+maxit = 500
 
 taus = [1.]
 kappas = [0.7, 0.8, 0.9]
@@ -28,7 +28,7 @@ Ls = [1,  5, 10, 25]
 
 def run_exper(obs, par, mask):
     """ This actually runs the experiment.
-        
+
         If you needed other arguments for this function you could either
         declare the values outside of the function and make a closure, or you
         could use functools.partial (or a lambda function) to curry the
@@ -59,13 +59,13 @@ def main(name, datadir, datafn, K, expdir=None, nfolds=1, nrestarts=1, seed=None
 
         datafn : Prefix name to files that data and missing masks are stored
                  in.
-        
+
         K : Number of components in HMM.
-        
+
         expdir : Path to directory to store experiment results.  If None
                  (default), then a directory, `name`_results, is made in the
                  current directory.
-        
+
         nfolds : Number of folds to generate if datafn is None.
 
         nrestarts : Number of random initial parameters.
@@ -111,6 +111,7 @@ def main(name, datadir, datafn, K, expdir=None, nfolds=1, nrestarts=1, seed=None
 
     prior_init = np.ones(K)
     prior_tran = np.ones((K,K))
+    N, D = X.shape
 
     rand_starts = list()
     for r in xrange(nrestarts):
@@ -156,19 +157,19 @@ def main(name, datadir, datafn, K, expdir=None, nfolds=1, nrestarts=1, seed=None
 
     # Create ExperimentSequential and call run_exper
     dname = os.path.join(datadir, datafn + "_data.txt")
-    exp = ExpSeq('exper_synth_4statedd', dname, run_exper, par_list,
+    exp = ExpSeq(datafn, dname, run_exper, par_list,
                  masks=masks, exper_dir=expdir)
     exp.run()
 
 
 if __name__ == "__main__":
-    
-    name = 'exper_hmmsgd_metaobs_synth_4statedd'
+
+    name = 'rc'
     datadir = 'data'
-    datafn = 'synth_4statedd_T100'
-    expdir = None
+    datafn = 'rc'
+    expdir = 'data/rc_results'
     nfolds = 3
     nrestarts = 2
-    seed = 8675309
+    seed = 42
 
-    main(name, datadir, datafn, expdir, nfolds, nrestarts, seed)
+    main(name, datadir, datafn, 8, expdir, nfolds, nrestarts, seed)
