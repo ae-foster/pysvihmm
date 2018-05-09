@@ -47,7 +47,7 @@ class ExperimentSequential(ExperimentBase):
     def __init__(self, name, data, func, pars, masks=[None], exper_dir=None):
         """
             name : Name of experiment in order to identify.
-                
+
             data : Path to file containing observations.  File should contain
                    an observation on each line with components separated by a
                    space so that numpy.loadtxt will read it.
@@ -117,7 +117,7 @@ class ExperimentSequential(ExperimentBase):
 class ExperimentMosix(ExperimentBase):
     pass
     """ Experiment that runs different parameter settings on Mosix cluster.
-        
+
         This just writes the necessary files to a directory that can then be
         copied to the cluster and run with `mosrun` and passing the jobfile
         that is written.
@@ -127,7 +127,7 @@ class ExperimentMosix(ExperimentBase):
                  extra_args=None):
         """
             name : Name of experiment in order to identify.
-                
+
             data : Path to file containing observations.  File should contain
                    an observation on each line with components separated by a
                    space so that numpy.loadtxt will read it.

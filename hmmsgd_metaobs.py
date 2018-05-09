@@ -173,6 +173,9 @@ class VBHMM(VariationalHMMBase):
         elif metaobs_fun == 'noverlap':
             self.metaobs_fun = self.metaobs_noverlap
             self.metaobs_fun_name = 'noverlap'
+        elif metaobs_fun == 'recurrence':
+            self.metaobs_fun = self.metaobs_recurrence
+            self.metaobs_fun_name = 'recurrence'
         else:
             raise RuntimeError("Unknown value for metaobs_fun: %s" % (metaobs_fun,))
 
@@ -269,13 +272,13 @@ class VBHMM(VariationalHMMBase):
             # Simulate out to recurrence of state
             bottom = c
             while bottom > 0:
-                if np.rand() < self.var_x[bottom, state]:
+                if npr.rand() < self.var_x[bottom, state]:
                     break
                 else:
                     bottom -= 1
             top = c+1
             while top < (self.T -1):
-                if np.rand() < self.var_x[top, state]:
+                if npr.rand() < self.var_x[top, state]:
                     break
                 else:
                     top += 1

@@ -22,8 +22,10 @@ except IOError:
 maxit = 500
 
 taus = [1.]
-kappas = [0.7, 0.8, 0.9]
+kappas = [0.7]
 Ls = [1,  5, 10, 25]
+metaobs_fns = ['recurrence', 'unif']
+verbose = True
 
 
 def run_exper(obs, par, mask):
@@ -135,20 +137,20 @@ def main(name, datadir, datafn, K, expdir=None, nfolds=1, nrestarts=1, seed=None
         # Make dict with initial parameters to pass to experiment.
         pd = {'init_init': init_init, 'init_tran': init_tran,
               'prior_init': prior_init, 'prior_tran': prior_tran,
-              'prior_emit': prior_emit, 'maxit': maxit}
+              'prior_emit': prior_emit, 'maxit': maxit, 'verbose': verbose}
         rand_starts.append(pd)
 
     # Compute Cartesian product of random starts with other possible parameter
     # values, make a generator to fill in entries in the par dicts created
     # above, and then construct the par_list by calling the generator with the
     # Cartesian product iterator.
-    par_prod_iter = itertools.product(rand_starts, taus, kappas, Ls)
+    par_prod_iter = itertools.product(rand_starts, taus, kappas, metaobs_fns)
 
     def gen_par(par_tuple):
         d = copy.copy(par_tuple[0])
         d['tau'] = par_tuple[1]
         d['kappa'] = par_tuple[2]
-        d['metaobs_half'] = par_tuple[3]
+        d['metaobs_fun'] = par_tuple[3]
         return d
 
     # Call gen_par on each par product to pack into dictionary to pass to
@@ -164,12 +166,13 @@ def main(name, datadir, datafn, K, expdir=None, nfolds=1, nrestarts=1, seed=None
 
 if __name__ == "__main__":
 
-    name = 'rc'
+    prefix = 'dd'
+    name = prefix
     datadir = 'data'
-    datafn = 'rc'
-    expdir = 'data/rc_results'
+    datafn = prefix
+    expdir = 'data/%s_results' % prefix
     nfolds = 3
-    nrestarts = 2
+    nrestarts = 1
     seed = 42
 
     main(name, datadir, datafn, 8, expdir, nfolds, nrestarts, seed)
