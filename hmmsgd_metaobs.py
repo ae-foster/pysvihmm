@@ -203,9 +203,9 @@ class VBHMM(VariationalHMMBase):
         #self.var_x = np.ones((metaobs_sz, self.K))
         self.var_x /= np.sum(self.var_x, axis=1)[:,np.newaxis]
 
-        self.lalpha = np.empty((metaobs_sz, self.K))
-        self.lbeta = np.empty((metaobs_sz, self.K))
-        self.lliks = np.empty((metaobs_sz, self.K))
+        self.lalpha = np.empty((self.T, self.K))
+        self.lbeta = np.empty((self.T, self.K))
+        self.lliks = np.empty((self.T, self.K))
 
     def metaobs_unif(self, N, L, n):
         """ Sample n basic (possibly overlapping) meta-observations of length
@@ -261,16 +261,31 @@ class VBHMM(VariationalHMMBase):
         # Pick centers of meta-observation at random.
         c_vec = npr.randint(L, N, n)
         minibatch = list()
+        overall_state_dist = np.mean(self.var_x, axis=0)
+        states = np.random.choice(np.arange(0,self.K), n, p=overall_state_dist)
 
         # Construct meta-observations as named tuples.
-        for c in c_vec:
-            # Todo simulate out to recurrence of a (sampled?) state
-
-            minibatch.append(MetaObs(c-L,c+L))
+        for state, c in zip(states, c_vec):
+            # Simulate out to recurrence of state
+            bottom = c
+            while bottom > 0:
+                if np.rand() < self.var_x[bottom, state]:
+                    break
+                else:
+                    bottom -= 1
+            top = c+1
+            while top < (self.T -1):
+                if np.rand() < self.var_x[top, state]:
+                    break
+                else:
+                    top += 1
+            # Include bottom, do not include top
+            # Minimal size is (c, c) of length 1
+            minibatch.append(MetaObs(bottom,top-1))
 
         return minibatch
 
-    def local_lower_bound(self):
+    def local_lower_bound(self, metaobs):
         """ Contribution of meta-observation to approximate lower bound
 
             approx. lower bound = local + global
@@ -283,8 +298,14 @@ class VBHMM(VariationalHMMBase):
         # pass it.
         #return -np.sum(np.log(self.c_table + eps))
 
+        if metaobs is None:
+            loff = 0
+            uoff = self.T-1
+        else:
+            loff, uoff = metaobs.i1, metaobs.i2
+
         # We don't need the minus anymore b/c this is 1/ctable
-        return np.sum(np.logaddexp.reduce(self.lalpha, axis=1))
+        return np.sum(np.logaddexp.reduce(self.lalpha[loff:(uoff+1)], axis=1))
 
     def global_lower_bound(self):
         """ Contribution of global parameters to approximate lower bound
@@ -376,9 +397,9 @@ class VBHMM(VariationalHMMBase):
                 self.var_x = np.random.rand(self.T, self.K)
                 #self.var_x = np.ones((metaobs_sz, self.K))
                 self.var_x /= np.sum(self.var_x, axis=1)[:,np.newaxis]
-                self.lalpha = np.empty((metaobs_sz, self.K))
-                self.lbeta = np.empty((metaobs_sz, self.K))
-                self.lliks = np.empty((metaobs_sz, self.K))
+                self.lalpha = np.empty((self.T, self.K))
+                self.lbeta = np.empty((self.T, self.K))
+                self.lliks = np.empty((self.T, self.K))
                 miniL = L
                 #print miniL
 
@@ -398,9 +419,9 @@ class VBHMM(VariationalHMMBase):
                 self.var_x = np.random.rand(self.T, self.K)
                 #self.var_x = np.ones((metaobs_sz, self.K))
                 self.var_x /= np.sum(self.var_x, axis=1)[:,np.newaxis]
-                self.lalpha = np.empty((metaobs_sz, self.K))
-                self.lbeta = np.empty((metaobs_sz, self.K))
-                self.lliks = np.empty((metaobs_sz, self.K))
+                self.lalpha = np.empty((self.T, self.K))
+                self.lbeta = np.empty((self.T, self.K))
+                self.lliks = np.empty((self.T, self.K))
                 miniL = bufferL
 
                 #scale down the minibatch size based on the computational budget
@@ -451,7 +472,7 @@ class VBHMM(VariationalHMMBase):
                     emit_inter[k] += e_i[k]
 
                 # Approximate lower bound contribution of this meta-observation
-                lb += self.local_lower_bound()
+                lb += self.local_lower_bound(data)
 
             # Global update for this mini batch
             self.global_update(A_inter, emit_inter)
@@ -524,14 +545,15 @@ class VBHMM(VariationalHMMBase):
         obs = self.obs
         # Compute likelihoods
         for k, odist in enumerate(self.var_emit):
-            self.lliks[:,k] = np.nan_to_num(odist.expected_log_likelihood(obs[loff:(uoff+1),:]))
+            self.lliks[loff:(uoff+1),k] = np.nan_to_num(
+                odist.expected_log_likelihood(obs[loff:(uoff+1),:]))
 
         # update forward, backward and scale coefficient tables
         self.forward_msgs(metaobs=metaobs)
         self.backward_msgs(metaobs=metaobs)
 
         # update weights
-        subchain_var_x = self.lalpha + self.lbeta
+        subchain_var_x = self.lalpha[loff:(uoff+1)] + self.lbeta[loff:(uoff+1)]
         subchain_var_x -= np.max(subchain_var_x, axis=1)[:,npa]
         subchain_var_x = np.exp(subchain_var_x)
         subchain_var_x /= np.sum(subchain_var_x, axis=1)[:,npa]
@@ -816,10 +838,10 @@ class VBHMM(VariationalHMMBase):
 
         lalpha = self.lalpha
 
-        lalpha[0,:] = self.mod_init + ll[0,:]
+        lalpha[loff,:] = self.mod_init + ll[loff,:]
 
         for t in xrange(loff+1,uoff+1):
-            lalpha[t-loff] = np.logaddexp.reduce(lalpha[t-loff-1] + ltran.T, axis=1) + ll[t-loff]
+            lalpha[t] = np.logaddexp.reduce(lalpha[t-1] + ltran.T, axis=1) + ll[t]
 
     def forward_msgs_real_data(self, lalpha_init=None):
         ltran = self.mod_tran
@@ -846,7 +868,7 @@ class VBHMM(VariationalHMMBase):
 
     def backward_msgs(self, metaobs=None):
         """ Creates a beta table (matrix) where
-            beta_table[i,j] = beta_{i}(z_{i} = j) = P(x_{i+1:T} | z_{t} = j).
+            beta_table[i,j] = beta_{i}(z_{i} = j) = P(x_{i+1:T} | z_{i} = j).
             This also scales the probabilies. Here we're looking at the
             probability of observing the partial observation sequence from time
             i+1 to T given that we're in state j at time t.
@@ -867,11 +889,11 @@ class VBHMM(VariationalHMMBase):
         ll = self.lliks
 
         lbeta = self.lbeta
-        lbeta[-1,:] = 0.
+        lbeta[uoff,:] = 0.
 
         for t in reversed(xrange(loff, uoff)):
-            np.logaddexp.reduce(ltran + lbeta[t-loff+1,:] + ll[t-loff+1], axis=1,
-                                out=lbeta[t-loff,:])
+            np.logaddexp.reduce(ltran + lbeta[t+1,:] + ll[t+1], axis=1,
+                                out=lbeta[t,:])
 
     def intermediate_pars(self, metaobs=None):
         """ Compute natural gradient of global parameters according to the
