@@ -199,7 +199,7 @@ class VBHMM(VariationalHMMBase):
         self.batchfactor = 1.
 
         metaobs_sz = 2*metaobs_half + 1
-        self.var_x = np.random.rand(metaobs_sz, self.K)
+        self.var_x = np.random.rand(self.T, self.K)
         #self.var_x = np.ones((metaobs_sz, self.K))
         self.var_x /= np.sum(self.var_x, axis=1)[:,np.newaxis]
 
@@ -373,7 +373,7 @@ class VBHMM(VariationalHMMBase):
 
                 #re-initialize to proper size:
                 metaobs_sz = 2*L + 1
-                self.var_x = np.random.rand(metaobs_sz, self.K)
+                self.var_x = np.random.rand(self.T, self.K)
                 #self.var_x = np.ones((metaobs_sz, self.K))
                 self.var_x /= np.sum(self.var_x, axis=1)[:,np.newaxis]
                 self.lalpha = np.empty((metaobs_sz, self.K))
@@ -395,7 +395,7 @@ class VBHMM(VariationalHMMBase):
                 #re-initialize to proper size:
                 #bufferL = 20
                 metaobs_sz = 2*bufferL + 1
-                self.var_x = np.random.rand(metaobs_sz, self.K)
+                self.var_x = np.random.rand(self.T, self.K)
                 #self.var_x = np.ones((metaobs_sz, self.K))
                 self.var_x /= np.sum(self.var_x, axis=1)[:,np.newaxis]
                 self.lalpha = np.empty((metaobs_sz, self.K))
@@ -531,10 +531,11 @@ class VBHMM(VariationalHMMBase):
         self.backward_msgs(metaobs=metaobs)
 
         # update weights
-        self.var_x = self.lalpha + self.lbeta
-        self.var_x -= np.max(self.var_x, axis=1)[:,npa]
-        self.var_x = np.exp(self.var_x)
-        self.var_x /= np.sum(self.var_x, axis=1)[:,npa]
+        subchain_var_x = self.lalpha + self.lbeta
+        subchain_var_x -= np.max(subchain_var_x, axis=1)[:,npa]
+        subchain_var_x = np.exp(subchain_var_x)
+        subchain_var_x /= np.sum(subchain_var_x, axis=1)[:,npa]
+        self.var_x[loff:(uoff+1)] = subchain_var_x
 
     def select_L(self, numIndices=1, epsilon=1e-5, minHalfL=1, avgResidual=False, Lincrement=1, Lcutoff=1000):
         #select indices randomly
@@ -892,8 +893,8 @@ class VBHMM(VariationalHMMBase):
 
         # Mean-field update
         tran_mf = self.prior_tran.copy()
-        for t in xrange(loff, uoff+1):
-            tran_mf += np.outer(self.var_x[t-loff-1,:], self.var_x[t-loff,:])
+        for t in xrange(loff, uoff):
+            tran_mf += np.outer(self.var_x[t,:], self.var_x[t+1,:])
 
         # Convert result to natural params -- this is the direction to follow
         A_inter = tran_mf - 1.
@@ -908,7 +909,7 @@ class VBHMM(VariationalHMMBase):
 
                 # Do mean-field update for this component
                 # Slicing obs makes a copy.
-                weights = self.var_x[inds,k]
+                weights = self.var_x[loff:(uoff+1),:][inds,k]
 
                 # The indexing is weird:  First we grab the subset of observations
                 # we care about, and then we only grab those that aren't missing.
@@ -926,7 +927,7 @@ class VBHMM(VariationalHMMBase):
             for k in xrange(self.K):
                 G = self.var_emit[k]
 
-                w = self.var_x[inds,k]
+                w = self.var_x[loff:(uoff+1),:][inds,k]
                 # The indexing is weird:  First we grab the subset of observations
                 # we care about, and then we only grab those that aren't missing.
                 data = obs[loff:(uoff+1)][inds]
@@ -961,9 +962,8 @@ class VBHMM(VariationalHMMBase):
             loff = 0
             uoff = self.T
         else:
+            # Run the global update excluding the buffer
             loff, uoff = metaobs.i1+bufferL-L, metaobs.i2-bufferL+L
-
-        var_x = self.var_x[bufferL-L:bufferL+L+1, :]
 
         obs = self.obs
         mask = self.mask
@@ -972,8 +972,8 @@ class VBHMM(VariationalHMMBase):
 
         # Mean-field update
         tran_mf = self.prior_tran.copy()
-        for t in xrange(loff, uoff+1):
-            tran_mf += np.outer(var_x[t-loff-1,:], var_x[t-loff,:])
+        for t in xrange(loff, uoff):
+            tran_mf += np.outer(self.var_x[t,:], self.var_x[t+1,:])
 
         # Convert result to natural params -- this is the direction to follow
         A_inter = tran_mf - 1.
@@ -988,7 +988,7 @@ class VBHMM(VariationalHMMBase):
 
                 # Do mean-field update for this component
                 # Slicing obs makes a copy.
-                weights = var_x[inds,k]
+                weights = self.var_x[loff:(uoff+1),:][inds,k]
 
                 # The indexing is weird:  First we grab the subset of observations
                 # we care about, and then we only grab those that aren't missing.
@@ -1006,7 +1006,7 @@ class VBHMM(VariationalHMMBase):
             for k in xrange(self.K):
                 G = self.var_emit[k]
 
-                w = var_x[inds,k]
+                w = self.var_x[loff:(uoff+1),:][inds,k]
                 # The indexing is weird:  First we grab the subset of observations
                 # we care about, and then we only grab those that aren't missing.
                 data = obs[loff:(uoff+1)][inds]
@@ -1132,7 +1132,7 @@ class VBHMM(VariationalHMMBase):
         logprob = np.zeros((nmiss,K))
 
         for k, odist in enumerate(self.var_emit):
-            logprob[:,k] = np.log(self.var_x[mask,k]+eps) + odist.expected_log_likelihood(obs[mask,:])
+            logprob[:,k] = np.log(self.var_x[loff:(uoff+1)][mask,k]+eps) + odist.expected_log_likelihood(obs[mask,:])
 
         return np.mean(np.logaddexp.reduce(logprob, axis=1))
 
