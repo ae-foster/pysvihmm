@@ -1,6 +1,8 @@
 from __future__ import division
 
 import os
+import sys
+import time
 import itertools
 import glob
 import copy
@@ -18,14 +20,11 @@ try:
 except IOError:
     from util import mvnrand
 
-# Small just for debugging
-maxit = 500
-
 taus = [1.]
 kappas = [0.7]
 Ls = [1,  5, 10, 25]
 metaobs_fns = ['recurrence', 'unif']
-verbose = True
+verbose = False
 
 
 def run_exper(obs, par, mask):
@@ -39,8 +38,11 @@ def run_exper(obs, par, mask):
     # Initialize object and run inference.  Have to have arguments in this
     # order.  Or could add mask as a key to par and then wouldn't need the mask
     # argument.
+    t = time.time()
     hmm = HMM.VBHMM(obs, mask=mask, **par)
     hmm.infer()
+    elapsed = time.time() - t
+    print "Ran in %g" % elapsed
 
     # Return hmm object as result, but remove reference to observations and
     # masks so we don't store lots of copies of the data.  Be careful, don't
@@ -166,7 +168,9 @@ def main(name, datadir, datafn, K, expdir=None, nfolds=1, nrestarts=1, seed=None
 
 if __name__ == "__main__":
 
-    prefix = 'dd'
+    assert len(sys.argv) == 3
+    prefix = sys.argv[1]
+    maxit = int(sys.argv[2])
     name = prefix
     datadir = 'data'
     datafn = prefix

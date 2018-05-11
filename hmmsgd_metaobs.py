@@ -264,11 +264,12 @@ class VBHMM(VariationalHMMBase):
         # Pick centers of meta-observation at random.
         c_vec = npr.randint(L, N, n)
         minibatch = list()
-        overall_state_dist = np.mean(self.var_x, axis=0)
-        states = np.random.choice(np.arange(0,self.K), n, p=overall_state_dist)
+        # overall_state_dist = np.mean(self.var_x, axis=0)
+        # states = np.random.choice(np.arange(0,self.K), n, p=overall_state_dist)
 
         # Construct meta-observations as named tuples.
-        for state, c in zip(states, c_vec):
+        for c in c_vec:
+            state = np.random.choice(np.arange(0, self.K), 1, p=self.var_x[c, :])[0]
             # Simulate out to recurrence of state
             bottom = c
             while bottom > 0:
@@ -284,7 +285,7 @@ class VBHMM(VariationalHMMBase):
                     top += 1
             # Include bottom, do not include top
             # Minimal size is (c, c) of length 1
-            minibatch.append(MetaObs(bottom,top-1))
+            minibatch.append(MetaObs(bottom,top))
 
         return minibatch
 

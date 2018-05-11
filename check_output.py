@@ -1,8 +1,12 @@
 import numpy as np
 import cPickle as pkl
+import sys
 
-prefix='rc'
-fname = 'data/%s_results/%s_par0_fold0.pkl' % (prefix, prefix)
+assert len(sys.argv) == 3
+prefix = sys.argv[1]
+par = sys.argv[2]
+
+fname = 'data/%s_results/%s_par%s_fold0.pkl' % (prefix, prefix, par)
 with open(fname, 'rb') as f:
     hmm_obj = pkl.loads(f.read())
 
