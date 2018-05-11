@@ -21,10 +21,13 @@ except IOError:
     from util import mvnrand
 
 taus = [1.]
-kappas = [0.7]
-Ls = [1,  5, 10, 25]
-metaobs_fns = ['recurrence', 'unif']
+kappas = [0.6]
+Ls = [1, 20]
+reuse_msg = [True, False]
+grow_buffer = [False]
+correct_trans = [True, False]
 verbose = False
+K=5
 
 
 def run_exper(obs, par, mask):
@@ -146,13 +149,18 @@ def main(name, datadir, datafn, K, expdir=None, nfolds=1, nrestarts=1, seed=None
     # values, make a generator to fill in entries in the par dicts created
     # above, and then construct the par_list by calling the generator with the
     # Cartesian product iterator.
-    par_prod_iter = itertools.product(rand_starts, taus, kappas, metaobs_fns)
+    par_prod_iter = itertools.product(rand_starts, taus, kappas, reuse_msg,
+                                      grow_buffer, Ls, correct_trans)
 
     def gen_par(par_tuple):
         d = copy.copy(par_tuple[0])
         d['tau'] = par_tuple[1]
         d['kappa'] = par_tuple[2]
-        d['metaobs_fun'] = par_tuple[3]
+        d['reuseMsg'] = par_tuple[3]
+        d['growBuffer'] = par_tuple[4]
+        d['metaobs_half'] = par_tuple[5]
+        d['correctTrans'] = par_tuple[6]
+        d['mb_sz'] = 100//(2*par_tuple[5]+1)
         return d
 
     # Call gen_par on each par product to pack into dictionary to pass to
@@ -177,6 +185,6 @@ if __name__ == "__main__":
     expdir = 'data/%s_results' % prefix
     nfolds = 3
     nrestarts = 1
-    seed = 42
+    seed = None
 
-    main(name, datadir, datafn, 8, expdir, nfolds, nrestarts, seed)
+    main(name, datadir, datafn, K, expdir, nfolds, nrestarts, seed)

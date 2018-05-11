@@ -81,7 +81,8 @@ class VBHMM(VariationalHMMBase):
                  full_predprob=False, init_init=None, init_tran=None,
                  maxit=100, verbose=False, adagrad=False, metaobs_fun='unif',
                  seed=None, sts=None, fullpred_freq=10, fullpred_sched=None,
-                 growBuffer=False, bufferBudget=False):
+                 growBuffer=False, bufferBudget=False, reuseMsg=False,
+                 correctTrans=True):
         """ This initializes the HMMSVI object. Assume we have K states and T
             observations
 
@@ -144,6 +145,13 @@ class VBHMM(VariationalHMMBase):
 
             growBuffer : Bool, Grow buffer around metaobs to lower error at
                          end points.
+
+            reuseMsg : Bool, Re-use old messages where available to improve
+                       estimation at ends (alternative to buffering for
+                       moderate chain length).
+
+            correctTrans : Bool, Use corrected transition updates not based on
+                           assuming independence between adjacent states
         """
 
         np.random.seed(seed)
@@ -189,6 +197,8 @@ class VBHMM(VariationalHMMBase):
 
         self.growBuffer = growBuffer
         self.bufferBudget = bufferBudget
+        self.reuseMsg = reuseMsg
+        self.correctTrans = correctTrans
 
         if metaobs_half < 1:
             raise RuntimeError("metaobs (%d) must be >= 1." % (metaobs_half,))
@@ -206,9 +216,9 @@ class VBHMM(VariationalHMMBase):
         #self.var_x = np.ones((metaobs_sz, self.K))
         self.var_x /= np.sum(self.var_x, axis=1)[:,np.newaxis]
 
-        self.lalpha = np.empty((self.T, self.K))
-        self.lbeta = np.empty((self.T, self.K))
-        self.lliks = np.empty((self.T, self.K))
+        self.lalpha = np.nan*np.ones((self.T, self.K))
+        self.lbeta = np.nan*np.ones((self.T, self.K))
+        self.lliks = np.nan*np.ones((self.T, self.K))
 
     def metaobs_unif(self, N, L, n):
         """ Sample n basic (possibly overlapping) meta-observations of length
@@ -391,23 +401,17 @@ class VBHMM(VariationalHMMBase):
             # Update learning rate, (t + tau)^{-kappa}
             self.lrate = (it + self.tau)**(-self.kappa)
 
-            #need to specify how often we call select L, and a max L
+            # need to specify how often we call select L, and a max L
             if L is None or (adaptive and it % perIter == 0):
                 L = self.select_L(mb_sz, epsilon=epsilon, minHalfL=minHalfL,
                     avgResidual=avgResidual, Lincrement=Lincrement, Lcutoff= Lcutoff)
 
                 #re-initialize to proper size:
                 metaobs_sz = 2*L + 1
-                self.var_x = np.random.rand(self.T, self.K)
-                #self.var_x = np.ones((metaobs_sz, self.K))
-                self.var_x /= np.sum(self.var_x, axis=1)[:,np.newaxis]
-                self.lalpha = np.empty((self.T, self.K))
-                self.lbeta = np.empty((self.T, self.K))
-                self.lliks = np.empty((self.T, self.K))
+                # Upon changing L, no longer need to resize anything :)
                 miniL = L
-                #print miniL
 
-            #L must be specified in order for this function to work:
+            # L must be specified in order for this function to work:
             if growBuffer and it % perIter == 0:
                 """currently, the number of indices to grow around is ALWAYS self.mb_sz
                     the buffer_budget functions resizes mb_sz to be used for minibatches
@@ -420,12 +424,7 @@ class VBHMM(VariationalHMMBase):
                 #re-initialize to proper size:
                 #bufferL = 20
                 metaobs_sz = 2*bufferL + 1
-                self.var_x = np.random.rand(self.T, self.K)
-                #self.var_x = np.ones((metaobs_sz, self.K))
-                self.var_x /= np.sum(self.var_x, axis=1)[:,np.newaxis]
-                self.lalpha = np.empty((self.T, self.K))
-                self.lbeta = np.empty((self.T, self.K))
-                self.lliks = np.empty((self.T, self.K))
+                # Upon changing buffer size, no longer need to resize anything :)
                 miniL = bufferL
 
                 #scale down the minibatch size based on the computational budget
@@ -842,10 +841,14 @@ class VBHMM(VariationalHMMBase):
 
         lalpha = self.lalpha
 
-        lalpha[loff,:] = self.mod_init + ll[loff,:]
+        if self.reuseMsg and loff > 0 and not np.isnan(lalpha[loff-1]).any():
+            lalpha[loff,:] = np.logaddexp.reduce(lalpha[loff-1,:] + ltran.T, axis=1) \
+                             + ll[loff,:]
+        else:
+            lalpha[loff,:] = self.mod_init + ll[loff,:]
 
         for t in xrange(loff+1,uoff+1):
-            lalpha[t] = np.logaddexp.reduce(lalpha[t-1] + ltran.T, axis=1) + ll[t]
+            lalpha[t] = np.logaddexp.reduce(lalpha[t-1,:] + ltran.T, axis=1) + ll[t]
 
     def forward_msgs_real_data(self, lalpha_init=None):
         ltran = self.mod_tran
@@ -893,11 +896,39 @@ class VBHMM(VariationalHMMBase):
         ll = self.lliks
 
         lbeta = self.lbeta
-        lbeta[uoff,:] = 0.
+
+        if self.reuseMsg and uoff < (self.T-1) and not np.isnan(lbeta[uoff+1,:]).any():
+            np.logaddexp.reduce(ltran + lbeta[uoff+1,:] + ll[uoff+1], axis=1,
+                                out=lbeta[uoff,:])
+        else:
+            lbeta[uoff,:] = 0.
 
         for t in reversed(xrange(loff, uoff)):
             np.logaddexp.reduce(ltran + lbeta[t+1,:] + ll[t+1], axis=1,
                                 out=lbeta[t,:])
+
+    def count_transitions(self, A, metaobs=None):
+        """ Use a backward-like recursion to count expected transitions from
+            exact posterior (avoid using mean field assumption).
+        """
+
+        if metaobs is None:
+            loff = 0
+            uoff = self.T-1
+        else:
+            loff, uoff = metaobs.i1, metaobs.i2
+
+        ltran = self.mod_tran
+        ll = self.lliks
+
+        lbeta = self.lbeta
+
+        for t in reversed(xrange(loff, uoff)):
+            a_t = ltran + lbeta[t+1,:] + ll[t+1] + self.lalpha[t,:,npa]
+            a_t -= a_t.max()
+            a_t = np.exp(a_t)
+            a_t /= a_t.sum()
+            A[:] += a_t
 
     def intermediate_pars(self, metaobs=None):
         """ Compute natural gradient of global parameters according to the
@@ -919,8 +950,11 @@ class VBHMM(VariationalHMMBase):
 
         # Mean-field update
         tran_mf = self.prior_tran.copy()
-        for t in xrange(loff, uoff):
-            tran_mf += np.outer(self.var_x[t,:], self.var_x[t+1,:])
+        if self.correctTrans:
+            self.count_transitions(tran_mf, metaobs=metaobs)
+        else:
+            for t in xrange(loff, uoff):
+                tran_mf += np.outer(self.var_x[t,:], self.var_x[t+1,:])
 
         # Convert result to natural params -- this is the direction to follow
         A_inter = tran_mf - 1.
